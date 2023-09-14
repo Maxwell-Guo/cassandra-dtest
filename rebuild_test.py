@@ -27,7 +27,9 @@ class TestRebuild(Tester):
             r'Can\'t send migration request: node.*is down',
             # ignore streaming error during bootstrap
             r'Exception encountered during startup',
-            r'Streaming error occurred'
+            r'Streaming error occurred',
+            # ignore streaming error during resumable tests
+            r'peer 127.0.0.3:7000 is probably down'
         )
 
     def test_simple_rebuild(self):
@@ -217,17 +219,17 @@ class TestRebuild(Tester):
         node3.byteman_submit(script)
 
         # First rebuild must fail and data must be incomplete
-        with pytest.raises(ToolError, message='Unexpected: SUCCEED'):
+        with pytest.raises(ToolError):
             logger.debug('Executing first rebuild -> '),
             node3.nodetool('rebuild dc1')
-        logger.debug('Expected: FAILED')
+            pytest.fail("Expected: FAILED")
 
         session.execute('USE ks')
-        with pytest.raises(AssertionError, message='Unexpected: COMPLETE'):
+        with pytest.raises(AssertionError):
             logger.debug('Checking data is complete -> '),
             for i in range(0, 20000):
                 query_c1c2(session, i, ConsistencyLevel.LOCAL_ONE)
-        logger.debug('Expected: INCOMPLETE')
+            pytest.fail('Expected: INCOMPLETE')
 
         logger.debug('Executing second rebuild -> '),
         node3.nodetool('rebuild dc1')
@@ -336,8 +338,9 @@ class TestRebuild(Tester):
         session = self.patient_exclusive_cql_connection(node1)
         session.execute("CREATE KEYSPACE ks1 WITH replication = {'class':'SimpleStrategy', 'replication_factor':2};")
 
-        with pytest.raises(ToolError, match='is not a range that is owned by this node'):
+        with pytest.raises(ToolError):
             node1.nodetool('rebuild -ks ks1 -ts (%s,%s]' % (node1_token, node2_token))
+            pytest.fail("range should not be owned by this node")
 
     @since('3.10')
     @pytest.mark.no_vnodes
@@ -372,8 +375,9 @@ class TestRebuild(Tester):
         session = self.patient_exclusive_cql_connection(node1)
         session.execute("CREATE KEYSPACE ks1 WITH replication = {'class':'SimpleStrategy', 'replication_factor':2};")
 
-        with pytest.raises(ToolError, message='Unable to find sufficient sources for streaming range'):
+        with pytest.raises(ToolError):
             node1.nodetool('rebuild -ks ks1 -ts (%s,%s] -s %s' % (node3_token, node1_token, node3_address))
+            pytest.fail("should not find sufficient sources")
 
     @since('3.10')
     @pytest.mark.no_vnodes

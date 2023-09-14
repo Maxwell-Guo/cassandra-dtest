@@ -39,7 +39,9 @@ class BaseReplaceAddressTest(Tester):
             # ignore streaming error during bootstrap
             r'Streaming error occurred',
             r'failed stream session',
-            r'Failed to properly handshake with peer'
+            r'Failed to properly handshake with peer',
+            # ignore streaming error during resumable tests
+            r'peer 127.0.0.1:7000 is probably down'
         )
 
     def _setup(self, n=3, opts=None, enable_byteman=False, mixed_versions=False):
@@ -49,7 +51,7 @@ class BaseReplaceAddressTest(Tester):
             logger.debug("Setting cluster options: {}".format(opts))
             self.cluster.set_configuration_options(opts)
 
-        self.cluster.set_batch_commitlog(enabled=True)
+        self.cluster.set_batch_commitlog(enabled=True, use_batch_window = self.cluster.version() < '5.0')
         self.query_node = self.cluster.nodelist()[0]
         self.replaced_node = self.cluster.nodelist()[-1]
 
@@ -79,6 +81,11 @@ class BaseReplaceAddressTest(Tester):
                     wait_other_notice=False, wait_for_binary_proto=True,
                     replace_address=None, opts=None, data_center=None,
                     extra_jvm_args=None):
+        """
+        This explicitly starts the replacement node with reset_bootstrap_progress=false as the tests were originally
+        authored in a pre 5.0 world where bootstrap resume was enabled by default. As tests that exercise this functionality
+        explicitly set it or assume a world with this config, we should be in good shape.
+        """
         if replace_address is None:
             replace_address = self.replaced_node.address()
         if data_center is None:
@@ -104,7 +111,8 @@ class BaseReplaceAddressTest(Tester):
             extra_jvm_args = []
         extra_jvm_args.extend(["-Dcassandra.{}={}".format(jvm_option, replace_address),
                                "-Dcassandra.ring_delay_ms=10000",
-                               "-Dcassandra.broadcast_interval_ms=10000"])
+                               "-Dcassandra.broadcast_interval_ms=10000",
+                               "-Dcassandra.reset_bootstrap_progress=false"])
 
         self.replacement_node.start(jvm_args=extra_jvm_args,
                                     wait_for_binary_proto=wait_for_binary_proto, wait_other_notice=wait_other_notice)
